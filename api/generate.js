@@ -1,8 +1,9 @@
-import { IncomingForm } from 'formidable';
-import fs from 'fs/promises';
+import formidable from 'formidable';
+import fs from 'fs';
+import path from 'path';
 import { GifWriter } from 'omggif';
-import { PNG } from 'pngjs';
 import puppeteer from 'puppeteer';
+import { PNG } from 'pngjs';
 
 export const config = {
   api: {
