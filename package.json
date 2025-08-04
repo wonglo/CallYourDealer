@@ -1,0 +1,19 @@
+{
+  "name": "call-your-dealer",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "vercel build",
+    "start": "vercel start"
+  },
+  "dependencies": {
+    "formidable": "^3.7.0",
+    "puppeteer": "^21.11.0",
+    "gif-encoder-2": "^2.0.1",
+    "pngjs": "^7.0.0"
+  },
+  "optionalDependencies": {
+    "canvas": "*"
+  }
+}
