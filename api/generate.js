@@ -1,5 +1,3 @@
-// api/generate.js
-
 import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
@@ -7,7 +5,6 @@ import { fileURLToPath } from 'url';
 import chromium from 'chrome-aws-lambda';
 import puppeteer from 'puppeteer-core';
 import { GifWriter } from 'omggif';
-import PNG from 'png-js';
 
 export const config = {
   api: {
@@ -38,19 +35,19 @@ export default async function handler(req, res) {
       if (err) throw err;
 
       const images = Array.isArray(files.images) ? files.images : [files.images];
-      const imagePaths = images.map(file => file.filepath);
+      const imagePaths = images.map((file) => file.filepath);
 
       console.info('[generate.js] Images array:', imagePaths);
 
       const browser = await puppeteer.launch({
         args: chromium.args,
-        defaultViewport: { width: 1200, height: 1104 },
-        executablePath: await chromium.executablePath || '/usr/bin/chromium-browser',
+        executablePath: (await chromium.executablePath) || '/usr/bin/chromium-browser',
         headless: chromium.headless,
+        defaultViewport: { width: 1200, height: 1104 },
       });
 
       const page = await browser.newPage();
-      const frameBuffers = [];
+      const frames = [];
 
       for (let i = 0; i < imagePaths.length; i++) {
         const content = `
@@ -60,30 +57,31 @@ export default async function handler(req, res) {
             </div>
           </body></html>
         `;
-
         await page.setContent(content);
         const screenshot = await page.screenshot({ type: 'png' });
-        frameBuffers.push(screenshot);
+        frames.push(screenshot);
       }
 
       await browser.close();
 
-      const width = 1200;
-      const height = 1104;
-      const gifBuffer = Buffer.alloc(frameBuffers.length * width * height * 5);
-      const gif = new GifWriter(gifBuffer, width, height, { loop: 0 });
+      const gifPath = path.join('/tmp', `output-${Date.now()}.gif`);
+      const gifStream = fs.createWriteStream(gifPath);
+      const gif = new GifWriter(gifStream, 600, 552, { loop: 0 });
 
-      for (const buffer of frameBuffers) {
-        const png = PNG.load(buffer);
-        await new Promise(resolve => png.decode(pixels => {
-          gif.addFrame(0, 0, width, height, pixels);
-          resolve();
-        }));
+      // Dynamic import for png-js (CommonJS compatibility workaround)
+      const { PNG } = await import('png-js');
+
+      for (const frame of frames) {
+        const png = new PNG(frame);
+        const pixels = png.decode();
+        gif.addFrame(600, 552, pixels, { delay: 100 });
       }
 
-      const finalBuffer = gifBuffer.subarray(0, gif.end());
+      gif.end();
+
+      const buffer = fs.readFileSync(gifPath);
       res.setHeader('Content-Type', 'image/gif');
-      res.status(200).end(finalBuffer);
+      res.status(200).end(buffer);
     });
   } catch (error) {
     console.error('[generate.js] Internal error:', error);
