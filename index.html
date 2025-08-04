@@ -7,9 +7,46 @@
 </head>
 <body>
   <h1>Upload your 5 images</h1>
-  <form action="/api/generate" method="post" enctype="multipart/form-data">
-    <input type="file" name="images" multiple required />
+  <form id="uploadForm">
+    <input type="file" name="images" multiple required accept="image/*" />
     <button type="submit">Generate GIF</button>
   </form>
+
+  <p id="status"></p>
+  <a id="downloadLink" href="#" style="display: none;" download="generated.gif">Download GIF</a>
+
+  <script>
+    const form = document.getElementById('uploadForm');
+    const status = document.getElementById('status');
+    const downloadLink = document.getElementById('downloadLink');
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      status.textContent = 'Uploading and generating...';
+      downloadLink.style.display = 'none';
+
+      const formData = new FormData(form);
+
+      try {
+        const response = await fetch('/api/generate', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) {
+          throw new Error(`Server error: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        downloadLink.href = url;
+        downloadLink.style.display = 'inline';
+        status.textContent = 'GIF generated!';
+      } catch (error) {
+        console.error(error);
+        status.textContent = 'Something went wrong.';
+      }
+    });
+  </script>
 </body>
 </html>
