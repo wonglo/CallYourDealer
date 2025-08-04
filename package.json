@@ -3,10 +3,15 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "chrome-aws-lambda": "^10.1.0",
-    "formidable": "^2.1.1",
+    "formidable": "^3.6.0",
+    "puppeteer": "^22.8.2",
     "omggif": "^1.0.10",
+<<<<<<< HEAD
     "pngjs": "^7.0.0",
     "puppeteer-core": "^22.8.2"
   }
+=======
+    "pngjs": "^7.0.0"
+}
+>>>>>>> 7691794 (Final stable generate.js with Puppeteer + omggif setup)
 }
