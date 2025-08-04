@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node api/generate.js",
-    "start": "node api/generate.js"
-  },
+  "dev": "node api/generate.js",
+  "start": "node api/generate.js"
+},
   "dependencies": {
     "formidable": "^2.1.1",
     "puppeteer": "^22.8.2",
