@@ -3,9 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vercel dev",
-    "build": "vercel build",
-    "start": "vercel start"
+    "dev": "node api/generate.js",
+    "start": "node api/generate.js"
   },
   "dependencies": {
     "formidable": "^2.1.1",
