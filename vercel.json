@@ -4,5 +4,11 @@
       "src": "pages/api/generate.js",
       "use": "@vercel/node"
     }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/pages/api/generate.js"
+    }
   ]
 }
