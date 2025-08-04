@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "formidable": "^3.7.0",
+    "formidable": "^3.6.2",
     "puppeteer": "^22.8.2",
     "pngjs": "^7.0.0",
     "omggif": "^1.0.10"
