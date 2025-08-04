@@ -1,4 +1,6 @@
-import { IncomingForm } from 'formidable';
+import formidable from 'formidable';
+const { IncomingForm } = formidable;
+
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
