@@ -8,9 +8,12 @@
     "start": "vercel start"
   },
   "dependencies": {
-    "formidable": "^3.7.0",
-    "puppeteer": "^21.11.0",
-    "gifencoder": "^0.6.1",
-    "pngjs": "^7.0.0"
-  }
+  "formidable": "^2.1.1",
+  "puppeteer": "^21.11.0",
+  "gifencoder": "^0.6.0",
+  "pngjs": "^7.0.0"
+},
+"optionalDependencies": {
+  "canvas": "*"
+}
 }
