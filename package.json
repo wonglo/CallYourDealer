@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "formidable": "^2.1.1",
-    "puppeteer": "^21.11.0",
+    "puppeteer": "^22.8.2",
     "pngjs": "^7.0.0",
     "omggif": "^1.0.10"
   },
