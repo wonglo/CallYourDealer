@@ -5,7 +5,8 @@ import { fileURLToPath } from 'url';
 import chromium from 'chrome-aws-lambda';
 import puppeteer from 'puppeteer-core';
 import { GifWriter } from 'omggif';
-import { PNG } from 'png-js';
+import PNGModule from 'png-js';
+const { PNG } = PNGModule;
 
 export const config = {
   api: {
@@ -23,28 +24,33 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  try {
-    const form = formidable({
-      multiples: true,
-      maxFiles: 5,
-      maxFileSize: 20 * 1024 * 1024,
-      uploadDir: '/tmp',
-      keepExtensions: true,
-    });
+  const form = formidable({
+    multiples: true,
+    maxFiles: 5,
+    maxFileSize: 20 * 1024 * 1024, // 20MB
+    uploadDir: '/tmp',
+    keepExtensions: true,
+  });
 
-    form.parse(req, async (err, fields, files) => {
-      if (err) throw err;
+  form.parse(req, async (err, fields, files) => {
+    if (err) {
+      console.error('[generate.js] Form parse error:', err);
+      return res.status(500).json({ error: 'Form parsing failed' });
+    }
 
+    try {
       const images = Array.isArray(files.images) ? files.images : [files.images];
       const imagePaths = images.map((file) => file.filepath);
-
       console.info('[generate.js] Images array:', imagePaths);
+
+      const executablePath = await chromium.executablePath;
+      if (!executablePath) throw new Error('Chromium executablePath not found');
 
       const browser = await puppeteer.launch({
         args: chromium.args,
-        executablePath: await chromium.executablePath,
-        headless: chromium.headless,
         defaultViewport: { width: 1200, height: 1104 },
+        executablePath,
+        headless: chromium.headless,
       });
 
       const page = await browser.newPage();
@@ -66,30 +72,23 @@ export default async function handler(req, res) {
 
       await browser.close();
 
-      const gifPath = path.join('/tmp', `output-${Date.now()}.gif`);
-      const gifStream = fs.createWriteStream(gifPath);
-      const width = 600;
-      const height = 552;
-      const gif = new GifWriter(gifStream, width, height, { loop: 0 });
+      const width = 1200;
+      const height = 1104;
+      const gifData = Buffer.alloc(width * height * 5 * frames.length);
+      const gif = new GifWriter(gifData, width, height, { loop: 0 });
 
       for (const frame of frames) {
-        const png = new PNG(frame);
-        await new Promise((resolve) => {
-          png.decode((pixels) => {
-            gif.addFrame(0, 0, width, height, pixels, { delay: 100 });
-            resolve();
-          });
-        });
+        const decoded = PNG.sync.read(frame);
+        gif.addFrame(0, 0, width, height, decoded.data, { delay: 100 });
       }
 
-      gif.end();
+      const gifBuffer = gifData.subarray(0, gif.end());
 
       res.setHeader('Content-Type', 'image/gif');
-      const buffer = fs.readFileSync(gifPath);
-      res.status(200).end(buffer);
-    });
-  } catch (error) {
-    console.error('[generate.js] Internal error:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
+      res.status(200).end(gifBuffer);
+    } catch (err) {
+      console.error('[generate.js] Internal error:', err);
+      res.status(500).json({ error: 'GIF generation failed' });
+    }
+  });
 }
