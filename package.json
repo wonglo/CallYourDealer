@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "formidable": "^2.1.1",
+    "chrome-aws-lambda": "^10.1.0",
+    "formidable": "^2.1.5",
     "omggif": "^1.0.10",
     "pngjs": "^7.0.0",
     "puppeteer": "^19.11.1"
