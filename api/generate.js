@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import chromium from 'chrome-aws-lambda';
 import puppeteer from 'puppeteer-core';
 import { GifWriter } from 'omggif';
+import { PNG } from 'png-js';
 
 export const config = {
   api: {
@@ -36,22 +37,18 @@ export default async function handler(req, res) {
 
       const images = Array.isArray(files.images) ? files.images : [files.images];
       const imagePaths = images.map((file) => file.filepath);
-      console.info('[generate.js] Images array:', imagePaths);
 
-      const executablePath = await chromium.executablePath;
-      if (!executablePath) {
-        throw new Error('Chromium executablePath not found.');
-      }
+      console.info('[generate.js] Images array:', imagePaths);
 
       const browser = await puppeteer.launch({
         args: chromium.args,
-        executablePath,
+        executablePath: await chromium.executablePath,
         headless: chromium.headless,
         defaultViewport: { width: 1200, height: 1104 },
       });
 
       const page = await browser.newPage();
-      const screenshots = [];
+      const frames = [];
 
       for (let i = 0; i < imagePaths.length; i++) {
         const content = `
@@ -64,22 +61,22 @@ export default async function handler(req, res) {
 
         await page.setContent(content);
         const screenshot = await page.screenshot({ type: 'png' });
-        screenshots.push(screenshot);
+        frames.push(screenshot);
       }
 
       await browser.close();
 
       const gifPath = path.join('/tmp', `output-${Date.now()}.gif`);
       const gifStream = fs.createWriteStream(gifPath);
-      const gif = new GifWriter(gifStream, 600, 552, { loop: 0 });
+      const width = 600;
+      const height = 552;
+      const gif = new GifWriter(gifStream, width, height, { loop: 0 });
 
-      // ✅ Fix png-js import and use
-      const PNG = (await import('png-js')).default;
-
-      for (const screenshot of screenshots) {
+      for (const frame of frames) {
+        const png = new PNG(frame);
         await new Promise((resolve) => {
-          new PNG(screenshot).decode((pixels) => {
-            gif.addFrame(0, 0, 600, 552, pixels, { delay: 100 });
+          png.decode((pixels) => {
+            gif.addFrame(0, 0, width, height, pixels, { delay: 100 });
             resolve();
           });
         });
@@ -87,11 +84,9 @@ export default async function handler(req, res) {
 
       gif.end();
 
-      gifStream.on('finish', () => {
-        const buffer = fs.readFileSync(gifPath);
-        res.setHeader('Content-Type', 'image/gif');
-        res.status(200).end(buffer);
-      });
+      res.setHeader('Content-Type', 'image/gif');
+      const buffer = fs.readFileSync(gifPath);
+      res.status(200).end(buffer);
     });
   } catch (error) {
     console.error('[generate.js] Internal error:', error);
