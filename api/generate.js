@@ -2,6 +2,7 @@ import { IncomingForm } from 'formidable';
 import fs from 'fs';
 import path from 'path';
 import { GifWriter } from 'omggif';
+import { PNG } from 'pngjs';
 import puppeteer from 'puppeteer';
 
 export const config = {
@@ -19,7 +20,7 @@ export default async function handler(req, res) {
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
-      console.error('Form parsing error:', err);
+      console.error('❌ Form parsing error:', err);
       return res.status(500).json({ error: 'Form parsing error' });
     }
 
@@ -50,7 +51,7 @@ export default async function handler(req, res) {
       res.status(200).end(gifBuffer);
 
     } catch (err) {
-      console.error('Processing error:', err);
+      console.error('🔥 Processing error:', err);
       res.status(500).json({ error: 'Failed to generate GIF' });
     }
   });
@@ -84,7 +85,6 @@ function createHTML(activeImage, thumbnails, activeIndex) {
 
 function createGifFromFrames(buffers) {
   return new Promise((resolve, reject) => {
-    const { PNG } = require('pngjs');
     const first = PNG.sync.read(buffers[0]);
     const gifData = Buffer.alloc(buffers.length * first.width * first.height * 4);
     const gifWriter = new GifWriter(gifData, first.width, first.height, { loop: 0 });
