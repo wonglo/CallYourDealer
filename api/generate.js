@@ -11,8 +11,6 @@ export const config = {
 };
 
 export default async function handler(req, res) {
-  console.log('[generate.js] API triggered');
-
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
@@ -21,18 +19,13 @@ export default async function handler(req, res) {
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
-      console.error('[generate.js] Form parsing error:', err);
-      return res.status(500).json({ error: 'Form parsing error' });
+      return res.status(500).json({ step: 'parse', error: err.message });
     }
 
     try {
-      console.log('[generate.js] Files parsed:', files);
-
       const images = Array.isArray(files.images) ? files.images : [files.images];
-
       if (!images || images.length !== 5) {
-        console.warn('[generate.js] Invalid image count:', images.length);
-        return res.status(400).json({ error: 'Exactly 5 images required' });
+        return res.status(400).json({ step: 'validate', error: 'Exactly 5 images required' });
       }
 
       const browser = await puppeteer.launch({
@@ -56,15 +49,14 @@ export default async function handler(req, res) {
       }
 
       await browser.close();
-      console.log('[generate.js] Screenshots captured');
 
       const gifBuffer = await createGifFromFrames(frameBuffers);
 
       res.setHeader('Content-Type', 'image/gif');
       return res.status(200).end(gifBuffer);
     } catch (err) {
-      console.error('[generate.js] Internal error:', err);
-      return res.status(500).json({ error: 'Failed to generate GIF' });
+      // Instead of hiding the error, send it back in the response
+      return res.status(500).json({ step: 'try/catch', error: err.message, stack: err.stack });
     }
   });
 }
@@ -98,8 +90,7 @@ function createGifFromFrames(buffers) {
 
       resolve(gifData.subarray(0, gif.end()));
     } catch (e) {
-      console.error('[generate.js] GIF encoding failed:', e);
-      reject(e);
+      reject(new Error('GIF creation failed: ' + e.message));
     }
   });
 }
