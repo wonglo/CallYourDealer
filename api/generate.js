@@ -3,7 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { GifWriter } from 'omggif';
 import { PNG } from 'pngjs';
-import puppeteer from 'puppeteer';
+import chromium from 'chrome-aws-lambda';
+import puppeteer from 'puppeteer-core';
 
 export const config = {
   api: {
@@ -20,17 +21,21 @@ export default async function handler(req, res) {
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
-      console.error('❌ Form parsing error:', err);
+      console.error('Form parsing error:', err);
       return res.status(500).json({ error: 'Form parsing error' });
     }
 
     try {
       const images = Array.isArray(files.images) ? files.images : [files.images];
 
-      const browser = await puppeteer.launch({ headless: 'new' });
-      const page = await browser.newPage();
-      await page.setViewport({ width: 1200, height: 1104 });
+      const browser = await puppeteer.launch({
+        args: chromium.args,
+        executablePath: await chromium.executablePath,
+        headless: chromium.headless,
+        defaultViewport: { width: 1200, height: 1104 },
+      });
 
+      const page = await browser.newPage();
       const frameBuffers = [];
 
       for (let i = 0; i < images.length; i++) {
@@ -49,9 +54,8 @@ export default async function handler(req, res) {
 
       res.setHeader('Content-Type', 'image/gif');
       res.status(200).end(gifBuffer);
-
     } catch (err) {
-      console.error('🔥 Processing error:', err);
+      console.error('Processing error:', err);
       res.status(500).json({ error: 'Failed to generate GIF' });
     }
   });
