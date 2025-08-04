@@ -1,9 +1,11 @@
-import formidable from 'formidable';
+import pkg from 'formidable';
 import fs from 'fs';
 import path from 'path';
 import { GifWriter } from 'omggif';
 import puppeteer from 'puppeteer';
 import { PNG } from 'pngjs';
+
+const { IncomingForm } = pkg;
 
 export const config = {
   api: {
@@ -12,7 +14,10 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  console.log('[generate.js] API triggered');
+
   if (req.method !== 'POST') {
+    console.log('[generate.js] Method not allowed:', req.method);
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
@@ -20,13 +25,20 @@ export default async function handler(req, res) {
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
-      return res.status(500).json({ step: 'parse', error: err.message });
+      console.error('[generate.js] Form parsing error:', err);
+      return res.status(500).json({ error: 'Form parsing error' });
     }
+
+    console.log('[generate.js] Parsed fields:', fields);
+    console.log('[generate.js] Parsed files:', files);
 
     try {
       const images = Array.isArray(files.images) ? files.images : [files.images];
+      console.log('[generate.js] Images array:', images.map(i => i.filepath));
+
       if (!images || images.length !== 5) {
-        return res.status(400).json({ step: 'validate', error: 'Exactly 5 images required' });
+        console.warn('[generate.js] Invalid image count:', images.length);
+        return res.status(400).json({ error: 'Exactly 5 images required' });
       }
 
       const browser = await puppeteer.launch({
@@ -50,27 +62,40 @@ export default async function handler(req, res) {
       }
 
       await browser.close();
+      console.log('[generate.js] Screenshots captured');
 
       const gifBuffer = await createGifFromFrames(frameBuffers);
 
       res.setHeader('Content-Type', 'image/gif');
       return res.status(200).end(gifBuffer);
+
     } catch (err) {
-      // Instead of hiding the error, send it back in the response
-      return res.status(500).json({ step: 'try/catch', error: err.message, stack: err.stack });
+      console.error('[generate.js] Internal error:', err);
+      return res.status(500).json({ error: 'Failed to generate GIF' });
     }
   });
 }
 
-function createHTML(active, thumbs, activeIdx) {
-  const thumbHTML = thumbs
-    .map((src, i) => `<img src="${src}" style="width:64px;height:64px;margin:0 4px;border-radius:8px;border:${i === activeIdx ? '2px solid white' : 'none'};" />`)
+function createHTML(activeImage, thumbnails, activeIndex) {
+  const thumbHTML = thumbnails
+    .map((src, idx) => `
+      <img
+        src="${src}"
+        style="
+          width: 64px;
+          height: 64px;
+          border-radius: 8px;
+          margin: 0 8px;
+          border: ${idx === activeIndex ? '2px solid white' : 'none'};
+        "
+      />
+    `)
     .join('');
 
   return `
     <html>
-      <body style="margin:0;background:black;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-        <img src="${active}" style="width:536px;height:424px;border-radius:12px;object-fit:cover;margin-bottom:20px;" />
+      <body style="margin:0; background:black; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+        <img src="${activeImage}" style="width:536px;height:424px;border-radius:12px;object-fit:cover;margin-bottom:20px" />
         <div style="display:flex;justify-content:center;">${thumbHTML}</div>
       </body>
     </html>
@@ -81,7 +106,7 @@ function createGifFromFrames(buffers) {
   return new Promise((resolve, reject) => {
     try {
       const first = PNG.sync.read(buffers[0]);
-      const gifData = Buffer.alloc(buffers.length * first.width * first.height * 5);
+      const gifData = Buffer.alloc(buffers.length * first.width * first.height * 5); // generous allocation
       const gif = new GifWriter(gifData, first.width, first.height, { loop: 0 });
 
       for (const buffer of buffers) {
@@ -91,7 +116,8 @@ function createGifFromFrames(buffers) {
 
       resolve(gifData.subarray(0, gif.end()));
     } catch (e) {
-      reject(new Error('GIF creation failed: ' + e.message));
+      console.error('[generate.js] GIF encoding failed:', e);
+      reject(e);
     }
   });
 }
