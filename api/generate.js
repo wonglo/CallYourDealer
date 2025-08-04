@@ -11,6 +11,8 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  console.log('[generate.js] API triggered');
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
@@ -19,16 +21,23 @@ export default async function handler(req, res) {
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
-      console.error('Form parsing error:', err);
+      console.error('[generate.js] Form parsing error:', err);
       return res.status(500).json({ error: 'Form parsing error' });
     }
 
     try {
+      console.log('[generate.js] Files parsed:', files);
+
       const images = Array.isArray(files.images) ? files.images : [files.images];
+
+      if (!images || images.length !== 5) {
+        console.warn('[generate.js] Invalid image count:', images.length);
+        return res.status(400).json({ error: 'Exactly 5 images required' });
+      }
 
       const browser = await puppeteer.launch({
         headless: 'new',
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
       });
 
       const page = await browser.newPage();
@@ -39,20 +48,22 @@ export default async function handler(req, res) {
       for (let i = 0; i < images.length; i++) {
         const activePath = `file://${images[i].filepath}`;
         const thumbnailPaths = images.map(img => `file://${img.filepath}`);
-
         const html = createHTML(activePath, thumbnailPaths, i);
+
         await page.setContent(html);
         const buffer = await page.screenshot({ type: 'png' });
         frameBuffers.push(buffer);
       }
 
       await browser.close();
+      console.log('[generate.js] Screenshots captured');
 
       const gifBuffer = await createGifFromFrames(frameBuffers);
+
       res.setHeader('Content-Type', 'image/gif');
       return res.status(200).end(gifBuffer);
     } catch (err) {
-      console.error('GIF generation error:', err);
+      console.error('[generate.js] Internal error:', err);
       return res.status(500).json({ error: 'Failed to generate GIF' });
     }
   });
@@ -77,7 +88,7 @@ function createGifFromFrames(buffers) {
   return new Promise((resolve, reject) => {
     try {
       const first = PNG.sync.read(buffers[0]);
-      const gifData = Buffer.alloc(buffers.length * first.width * first.height * 5); // generous allocation
+      const gifData = Buffer.alloc(buffers.length * first.width * first.height * 5);
       const gif = new GifWriter(gifData, first.width, first.height, { loop: 0 });
 
       for (const buffer of buffers) {
@@ -86,8 +97,9 @@ function createGifFromFrames(buffers) {
       }
 
       resolve(gifData.subarray(0, gif.end()));
-    } catch (err) {
-      reject(err);
+    } catch (e) {
+      console.error('[generate.js] GIF encoding failed:', e);
+      reject(e);
     }
   });
 }
