@@ -1,8 +1,8 @@
-import puppeteer from 'puppeteer';
 import formidable from 'formidable';
+import fs from 'fs';
+import puppeteer from 'puppeteer';
 import { PNG } from 'pngjs';
 import { GifWriter } from 'omggif';
-import fs from 'fs';
 
 export const config = {
   api: {
@@ -10,15 +10,39 @@ export const config = {
   },
 };
 
+const form = formidable({
+  multiples: true,
+  maxFiles: 5,
+  maxFileSize: 20 * 1024 * 1024, // 20MB per file
+  uploadDir: '/tmp',
+  keepExtensions: true,
+});
+
+function createHTML(activePath, thumbnailPaths, activeIndex) {
+  const thumbnailsHTML = thumbnailPaths
+    .map((src, i) => {
+      const isActive = i === activeIndex;
+      const border = isActive ? 'border: 2px solid white;' : '';
+      return `<img src="${src}" style="width:64px;height:64px;border-radius:8px;${border}margin:0 4px;" />`;
+    })
+    .join('');
+
+  return `
+    <html>
+      <body style="margin:0;padding:0;width:1200px;height:1104px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:black;">
+        <img src="${activePath}" style="width:536px;height:424px;border-radius:12px;" />
+        <div style="margin-top:40px;display:flex;justify-content:center;">${thumbnailsHTML}</div>
+      </body>
+    </html>
+  `;
+}
+
 export default async function handler(req, res) {
   console.log('[generate.js] API triggered');
 
   if (req.method !== 'POST') {
-    console.warn('[generate.js] Invalid method');
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
-
-  const form = new formidable.IncomingForm({ keepExtensions: true });
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
@@ -26,17 +50,15 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Form parsing error' });
     }
 
-    console.log('[generate.js] Parsed fields:', fields);
-    console.log('[generate.js] Parsed files:', files);
-
     try {
       const images = Array.isArray(files.images) ? files.images : [files.images];
+
       if (!images || images.length !== 5) {
-        console.warn('[generate.js] Invalid image count:', images.length);
+        console.warn('[generate.js] Invalid image count:', images?.length);
         return res.status(400).json({ error: 'Exactly 5 images required' });
       }
 
-      const imagePaths = images.map(img => img.filepath);
+      const imagePaths = images.map(file => `file://${file.filepath}`);
       console.log('[generate.js] Images array:', imagePaths);
 
       const browser = await puppeteer.launch({
@@ -45,91 +67,33 @@ export default async function handler(req, res) {
       });
 
       const page = await browser.newPage();
-
       const frameBuffers = [];
 
-      for (let i = 0; i < images.length; i++) {
-        const activePath = `file://${images[i].filepath}`;
-        const thumbnails = images.map(img => `file://${img.filepath}`);
-        const html = createHTML(activePath, thumbnails, i);
-
-        await page.setContent(html);
+      for (let i = 0; i < imagePaths.length; i++) {
+        const html = createHTML(imagePaths[i], imagePaths, i);
+        await page.setContent(html, { waitUntil: 'networkidle0' });
         const buffer = await page.screenshot({ type: 'png' });
         frameBuffers.push(buffer);
       }
 
       await browser.close();
-      console.log('[generate.js] Screenshots captured');
 
       const gifBuffer = await createGifFromFrames(frameBuffers);
+
       res.setHeader('Content-Type', 'image/gif');
       return res.status(200).end(gifBuffer);
-    } catch (error) {
-      console.error('[generate.js] Internal error:', error);
-      return res.status(500).json({ error: 'Failed to generate GIF', details: error.message });
+    } catch (err) {
+      console.error('[generate.js] Internal error:', err);
+      return res.status(500).json({ error: 'Failed to generate GIF' });
     }
   });
-}
-
-function createHTML(activeImagePath, thumbnails, activeIndex) {
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body {
-          width: 1200px;
-          height: 1104px;
-          margin: 0;
-          background: black;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-        }
-        .hero {
-          width: 1072px;
-          height: 848px;
-          border-radius: 24px;
-          background-image: url("${activeImagePath}");
-          background-size: cover;
-          background-position: center;
-        }
-        .thumbnails {
-          margin-top: 48px;
-          display: flex;
-          gap: 40px;
-        }
-        .thumb {
-          width: 128px;
-          height: 128px;
-          border-radius: 16px;
-          background-size: cover;
-          background-position: center;
-          border: 4px solid transparent;
-        }
-        .thumb.active {
-          border: 4px solid white;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="hero"></div>
-      <div class="thumbnails">
-        ${thumbnails.map((url, i) =>
-          `<div class="thumb ${i === activeIndex ? 'active' : ''}" style="background-image: url('${url}')"></div>`
-        ).join('')}
-      </div>
-    </body>
-    </html>
-  `;
 }
 
 function createGifFromFrames(buffers) {
   return new Promise((resolve, reject) => {
     try {
       const first = PNG.sync.read(buffers[0]);
-      const gifData = Buffer.alloc(buffers.length * first.width * first.height * 5);
+      const gifData = Buffer.alloc(buffers.length * first.width * first.height * 5); // generous allocation
       const gif = new GifWriter(gifData, first.width, first.height, { loop: 0 });
 
       for (const buffer of buffers) {
