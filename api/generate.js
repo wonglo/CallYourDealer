@@ -1,9 +1,11 @@
+// api/generate.js
+
 import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import puppeteer from 'puppeteer-core';
 import chromium from 'chrome-aws-lambda';
+import puppeteer from 'puppeteer-core';
 import { GifWriter } from 'omggif';
 import PNG from 'png-js';
 
@@ -23,85 +25,68 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const form = new formidable.IncomingForm({
-    multiples: true,
-    maxFileSize: 20 * 1024 * 1024, // 20MB per file
-    uploadDir: '/tmp',
-    keepExtensions: true,
-  });
+  try {
+    const form = formidable({
+      multiples: true,
+      maxFiles: 5,
+      maxFileSize: 20 * 1024 * 1024, // 20MB
+      uploadDir: '/tmp',
+      keepExtensions: true,
+    });
 
-  form.parse(req, async (err, fields, files) => {
-    if (err) {
-      console.error('[generate.js] Form parsing error:', err);
-      return res.status(500).json({ error: 'Form parsing error' });
-    }
+    form.parse(req, async (err, fields, files) => {
+      if (err) throw err;
 
-    try {
       const images = Array.isArray(files.images) ? files.images : [files.images];
-      const imagePaths = images.map((file) => file.filepath);
+      const imagePaths = images.map(file => file.filepath);
+
       console.info('[generate.js] Images array:', imagePaths);
 
       const browser = await puppeteer.launch({
         args: chromium.args,
+        defaultViewport: { width: 1200, height: 1104 },
         executablePath: await chromium.executablePath || '/usr/bin/chromium-browser',
         headless: chromium.headless,
-        defaultViewport: { width: 1200, height: 1104 },
       });
 
       const page = await browser.newPage();
-      const frames = [];
+      const frameBuffers = [];
 
       for (let i = 0; i < imagePaths.length; i++) {
-        const html = `
+        const content = `
           <html><body style="margin:0;background:#000;">
             <div style="width:1200px;height:1104px;display:flex;align-items:center;justify-content:center;">
               <img src="file://${imagePaths[i]}" style="max-width:100%;max-height:100%;" />
             </div>
           </body></html>
         `;
-        await page.setContent(html);
+
+        await page.setContent(content);
         const screenshot = await page.screenshot({ type: 'png' });
-        frames.push(screenshot);
+        frameBuffers.push(screenshot);
       }
 
       await browser.close();
 
-      // Decode PNGs to raw pixel data
-      const gifBuffer = await createGifFromFrames(frames, 600, 552);
+      const width = 1200;
+      const height = 1104;
+      const gifBuffer = Buffer.alloc(frameBuffers.length * width * height * 5);
+      const gif = new GifWriter(gifBuffer, width, height, { loop: 0 });
+
+      for (const buffer of frameBuffers) {
+        const png = PNG.load(buffer);
+        await new Promise(resolve => png.decode(pixels => {
+          gif.addFrame(0, 0, width, height, pixels);
+          resolve();
+        }));
+      }
+
+      const finalBuffer = gifBuffer.subarray(0, gif.end());
       res.setHeader('Content-Type', 'image/gif');
-      return res.status(200).end(gifBuffer);
-    } catch (error) {
-      console.error('[generate.js] Internal error:', error);
-      return res.status(500).json({ error: 'Internal Server Error' });
-    }
-  });
-}
-
-function createGifFromFrames(buffers, width, height) {
-  return new Promise((resolve, reject) => {
-    try {
-      const gifData = Buffer.alloc(width * height * 5 * buffers.length);
-      const gif = new GifWriter(gifData, width, height, { loop: 0 });
-
-      let framesEncoded = 0;
-
-      const decodeNext = () => {
-        if (framesEncoded >= buffers.length) {
-          const output = gifData.subarray(0, gif.end());
-          return resolve(output);
-        }
-
-        PNG.decode(buffers[framesEncoded], (pixels) => {
-          gif.addFrame(0, 0, width, height, pixels, { delay: 100 });
-          framesEncoded++;
-          decodeNext();
-        });
-      };
-
-      decodeNext();
-    } catch (err) {
-      console.error('[generate.js] GIF encoding failed:', err);
-      reject(err);
-    }
-  });
+      res.status(200).end(finalBuffer);
+    });
+  } catch (error) {
+    console.error('[generate.js] Internal error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 }
