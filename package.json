@@ -10,10 +10,7 @@
   "dependencies": {
     "formidable": "^3.7.0",
     "puppeteer": "^21.11.0",
-    "gif-encoder-2": "^2.0.1",
+    "gifencoder": "^0.6.1",
     "pngjs": "^7.0.0"
-  },
-  "optionalDependencies": {
-    "canvas": "*"
   }
 }
