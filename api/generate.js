@@ -4,8 +4,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import chromium from 'chrome-aws-lambda';
 import puppeteer from 'puppeteer-core';
+import GifWriter from 'omggif';
 import PNGModule from 'png-js';
-import { GifWriter } from 'omggif';
 
 const { PNG } = PNGModule;
 
@@ -25,28 +25,28 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const form = formidable({
-    multiples: true,
-    maxFileSize: 20 * 1024 * 1024, // 20MB
-  });
-
   try {
+    const form = formidable({
+      multiples: true,
+      maxFiles: 5,
+      maxFileSize: 20 * 1024 * 1024, // 20MB
+      uploadDir: '/tmp',
+      keepExtensions: true,
+    });
+
     form.parse(req, async (err, fields, files) => {
       if (err) throw err;
 
       const images = Array.isArray(files.images) ? files.images : [files.images];
-      const imagePaths = images.map((f) => f.filepath);
+      const imagePaths = images.map((file) => file.filepath);
       console.info('[generate.js] Images array:', imagePaths);
 
       const executablePath = await chromium.executablePath;
-      if (!executablePath) {
-        throw new Error('Chromium executablePath not found');
-      }
 
       const browser = await puppeteer.launch({
         args: chromium.args,
         defaultViewport: { width: 1200, height: 1104 },
-        executablePath,
+        executablePath: executablePath || '/usr/bin/chromium-browser',
         headless: chromium.headless,
       });
 
@@ -54,43 +54,52 @@ export default async function handler(req, res) {
       const frames = [];
 
       for (let i = 0; i < imagePaths.length; i++) {
-        const html = `
+        const content = `
           <html><body style="margin:0;background:#000;">
             <div style="width:1200px;height:1104px;display:flex;align-items:center;justify-content:center;">
               <img src="file://${imagePaths[i]}" style="max-width:100%;max-height:100%;" />
             </div>
           </body></html>
         `;
-
-        await page.setContent(html);
+        await page.setContent(content);
         const screenshot = await page.screenshot({ type: 'png' });
         frames.push(screenshot);
       }
 
       await browser.close();
 
+      // Decode frames into raw RGBA
+      const decodedFrames = await Promise.all(
+        frames.map(
+          (frame) =>
+            new Promise((resolve) => {
+              const png = new PNG(frame);
+              png.decode((pixels) => resolve({ width: png.width, height: png.height, pixels }));
+            })
+        )
+      );
+
+      // Create GIF
       const gifPath = path.join('/tmp', `output-${Date.now()}.gif`);
       const gifStream = fs.createWriteStream(gifPath);
       const gif = new GifWriter(gifStream, 600, 552, { loop: 0 });
 
-      for (const buffer of frames) {
-        await new Promise((resolve) => {
-          const png = new PNG(buffer);
-          png.decode((pixels) => {
-            gif.addFrame(0, 0, 600, 552, pixels, { delay: 100 });
-            resolve();
-          });
+      for (const frame of decodedFrames) {
+        gif.addFrame(0, 0, 600, 552, frame.pixels, {
+          delay: 100,
         });
       }
 
       gif.end();
 
-      res.setHeader('Content-Type', 'image/gif');
-      const result = fs.readFileSync(gifPath);
-      res.status(200).end(result);
+      gifStream.on('finish', () => {
+        const buffer = fs.readFileSync(gifPath);
+        res.setHeader('Content-Type', 'image/gif');
+        res.status(200).end(buffer);
+      });
     });
-  } catch (err) {
-    console.error('[generate.js] Internal error:', err);
+  } catch (error) {
+    console.error('[generate.js] Internal error:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 }

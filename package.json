@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "puppeteer-core": "^10.4.0",
+    "puppeteer-core": "^19.11.1",
     "chrome-aws-lambda": "^10.1.0",
-    "formidable": "^3.5.0",
-    "png-js": "^1.0.0",
-    "omggif": "^1.0.10"
+    "formidable": "^3.0.0",
+    "omggif": "^1.0.10",
+    "png-js": "^1.0.0"
   }
 }
