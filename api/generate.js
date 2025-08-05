@@ -37,14 +37,18 @@ export default async function handler(req, res) {
 
       console.info('[generate.js] Received images:', imagePaths);
 
-      const executablePath = process.env.CHROMIUM_EXECUTABLE || '/usr/bin/chromium-browser';
-
-      const browser = await puppeteer.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        executablePath,
-        headless: true,
-        defaultViewport: { width: 1200, height: 1104 },
-      });
+      let browser;
+      try {
+        browser = await puppeteer.launch({
+          args: ['--no-sandbox', '--disable-setuid-sandbox'],
+          headless: true,
+          defaultViewport: { width: 1200, height: 1104 },
+          executablePath: process.env.CHROMIUM_EXECUTABLE || undefined,
+        });
+      } catch (e) {
+        console.error('[generate.js] Failed to launch browser:', e);
+        return res.status(500).json({ error: 'Failed to launch browser' });
+      }
 
       const page = await browser.newPage();
       const frames = [];
@@ -85,7 +89,6 @@ export default async function handler(req, res) {
   });
 }
 
-// PNG decoder helper
 function decodePNG(buffer) {
   return new Promise((resolve, reject) => {
     const png = new PNG(buffer);
