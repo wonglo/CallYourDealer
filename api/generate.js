@@ -2,6 +2,7 @@ import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import chromium from 'chrome-aws-lambda';
 import puppeteer from 'puppeteer-core';
 import PNGModule from 'png-js';
 const { PNG } = PNGModule;
@@ -15,6 +16,30 @@ export const config = {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const getOptions = async () => {
+  // For development environment
+  if (process.env.NODE_ENV !== 'production') {
+    return {
+      args: [],
+      executablePath: process.platform === 'win32'
+        ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+        : process.platform === 'darwin'
+        ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+        : '/usr/bin/google-chrome',
+      headless: true,
+      defaultViewport: { width: 1200, height: 1104 }
+    };
+  }
+  
+  // For Vercel production environment
+  return {
+    args: chromium.args,
+    executablePath: await chromium.executablePath,
+    headless: chromium.headless,
+    defaultViewport: { width: 1200, height: 1104 }
+  };
+};
 
 export default async function handler(req, res) {
   console.info('[generate.js] API triggered');
@@ -31,25 +56,16 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Form parsing failed' });
     }
 
+    let browser = null;
     try {
       const images = Array.isArray(files.images) ? files.images : [files.images];
       const imagePaths = images.map((file) => file.filepath);
 
       console.info('[generate.js] Received images:', imagePaths);
 
-      let browser;
-      try {
-        browser = await puppeteer.launch({
-          args: ['--no-sandbox', '--disable-setuid-sandbox'],
-          headless: true,
-          defaultViewport: { width: 1200, height: 1104 },
-          executablePath: process.env.CHROMIUM_EXECUTABLE || undefined,
-        });
-      } catch (e) {
-        console.error('[generate.js] Failed to launch browser:', e);
-        return res.status(500).json({ error: 'Failed to launch browser' });
-      }
-
+      const options = await getOptions();
+      browser = await puppeteer.launch(options);
+      
       const page = await browser.newPage();
       const frames = [];
 
@@ -65,8 +81,6 @@ export default async function handler(req, res) {
         const screenshot = await page.screenshot({ type: 'png' });
         frames.push(screenshot);
       }
-
-      await browser.close();
 
       const gifPath = path.join('/tmp', `output-${Date.now()}.gif`);
       const gifStream = fs.createWriteStream(gifPath);
@@ -85,10 +99,15 @@ export default async function handler(req, res) {
     } catch (error) {
       console.error('[generate.js] Internal error:', error);
       res.status(500).json({ error: 'Internal Server Error' });
+    } finally {
+      if (browser) {
+        await browser.close();
+      }
     }
   });
 }
 
+// PNG decoder helper
 function decodePNG(buffer) {
   return new Promise((resolve, reject) => {
     const png = new PNG(buffer);
