@@ -5,7 +5,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer-core';
-import { PNG } from 'png-js';
+import PNGModule from 'png-js';
+const { PNG } = PNGModule;
 import { GifWriter } from 'omggif';
 
 export const config = {
@@ -66,14 +67,19 @@ export default async function handler(req, res) {
       const height = 552;
       const gif = new GifWriter(gifStream, width, height, { loop: 0 });
 
+      let processed = 0;
+
       for (const frame of frames) {
         const png = new PNG(frame);
         png.decode((pixels) => {
           gif.addFrame(0, 0, width, height, pixels, { delay: 100 });
+          processed++;
+
+          if (processed === frames.length) {
+            gif.end();
+          }
         });
       }
-
-      gif.end();
 
       gifStream.on('finish', () => {
         const buffer = fs.readFileSync(gifPath);
