@@ -1,12 +1,12 @@
-import formidable from 'formidable';
+import pkg from 'formidable';
+const { IncomingForm } = pkg;
+
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import puppeteer from 'puppeteer';
-import PNGModule from 'png-js';
+import puppeteer from 'puppeteer-core';
+import { PNG } from 'png-js';
 import { GifWriter } from 'omggif';
-
-const { PNG } = PNGModule;
 
 export const config = {
   api: {
@@ -25,7 +25,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const form = new formidable.IncomingForm({ multiples: true, maxFileSize: 20 * 1024 * 1024 });
+    const form = new IncomingForm({ multiples: true, maxFileSize: 20 * 1024 * 1024 });
 
     form.parse(req, async (err, fields, files) => {
       if (err) throw err;
@@ -36,8 +36,8 @@ export default async function handler(req, res) {
       console.info('[generate.js] Images array:', imagePaths);
 
       const browser = await puppeteer.launch({
-        args: ['--no-sandbox'],
         headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
         defaultViewport: { width: 1200, height: 1104 },
       });
 
@@ -52,7 +52,6 @@ export default async function handler(req, res) {
             </div>
           </body></html>
         `;
-
         await page.setContent(content);
         const screenshot = await page.screenshot({ type: 'png' });
         frames.push(screenshot);
@@ -69,17 +68,18 @@ export default async function handler(req, res) {
 
       for (const frame of frames) {
         const png = new PNG(frame);
-        await new Promise((resolve) => png.decode((pixels) => {
+        png.decode((pixels) => {
           gif.addFrame(0, 0, width, height, pixels, { delay: 100 });
-          resolve();
-        }));
+        });
       }
 
       gif.end();
 
-      res.setHeader('Content-Type', 'image/gif');
-      const buffer = fs.readFileSync(gifPath);
-      res.status(200).end(buffer);
+      gifStream.on('finish', () => {
+        const buffer = fs.readFileSync(gifPath);
+        res.setHeader('Content-Type', 'image/gif');
+        res.status(200).end(buffer);
+      });
     });
   } catch (error) {
     console.error('[generate.js] Internal error:', error);
